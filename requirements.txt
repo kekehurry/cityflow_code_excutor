@@ -1,0 +1,4 @@
+docker_py==1.10.6
+Flask==3.0.3
+Flask_Cors==4.0.1
+pydantic==2.8.0
