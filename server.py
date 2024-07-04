@@ -21,7 +21,7 @@ check_interval = 10 # check every 10 seconds
 
 
 client = docker.from_env()
-bind_dir = os.getenv("BIND_DIR")
+bind_dir = os.getenv("BIND_DIR", os.path.abspath("./code"))
 
 def get_executor(session_id):
     if session_id in container_registry:

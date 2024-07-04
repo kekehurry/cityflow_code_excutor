@@ -73,7 +73,7 @@ class CodeExecutor:
                 container_name = None,
                 timeout: int = 60,
                 auto_remove: bool = True,
-                work_dir = "/workspace/code",
+                work_dir = "./code",
                 bind_dir = None,
                 stop_container: bool = True,
                 ):
@@ -84,8 +84,6 @@ class CodeExecutor:
         self._container_name = container_name
         self._timeout = timeout
         self._auto_remove = auto_remove
-        if bind_dir is None:
-            bind_dir = work_dir
         self._bind_dir = bind_dir
         self._work_dir = work_dir  
         self._stop_container = stop_container  
