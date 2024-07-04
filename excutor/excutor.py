@@ -5,10 +5,9 @@ from docker.errors import ImageNotFound,NotFound
 import logging
 import uuid
 from hashlib import md5
-from pathlib import Path
 import time
 from typing import Any, ClassVar, Dict, List, Optional, Type, Union
-import re
+import re,os
 from .utils import CommandLineCodeResult 
 
 TIMEOUT_MSG = "Timeout"
@@ -74,7 +73,7 @@ class CodeExecutor:
                 container_name = None,
                 timeout: int = 60,
                 auto_remove: bool = True,
-                work_dir = Path("./code"),
+                work_dir = "/workspace/code",
                 bind_dir = None,
                 stop_container: bool = True,
                 ):
@@ -108,8 +107,8 @@ class CodeExecutor:
                 entrypoint="/bin/sh",
                 tty=True,
                 auto_remove=auto_remove,
-                volumes={str(bind_dir.resolve()): {"bind": "/workspace", "mode": "rw"}},
-                working_dir="/workspace",
+                volumes={bind_dir: {"bind": "/workspace", "mode": "rw"}},
+                working_dir="/workspace"
             )
         # Start the container if it is not running
         if self._container.status != "running":
@@ -130,8 +129,8 @@ class CodeExecutor:
 
             filename = f"tmp_code_{md5(code.encode()).hexdigest()}.{lang}"
 
-            code_path = self._work_dir / filename
-            with code_path.open("w", encoding="utf-8") as fout:
+            code_path = os.path.join(self._work_dir, filename)
+            with open(code_path, "w") as fout:
                 fout.write(code)
             files.append(code_path)
 

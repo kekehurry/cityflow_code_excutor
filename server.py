@@ -6,6 +6,7 @@ from excutor.utils import CodeBlock
 import time,threading
 import docker
 import uuid
+import os
 
 
 app = Flask(__name__)
@@ -13,18 +14,23 @@ CORS(app)
 app.secret_key = 'cs-python-executor'
 container_registry = {}
 
-# if the container is inactive for 5 minutes, stop the container
+# if the container is inactive for 1 minutes, stop the container
 idle_time = 60  # 1 minutes timeout
-idle_threshold = 0.1 # if lower than 0.1% CPU usage, stops the container
+idle_threshold = 0.1 # if lower than 0.1% CPU usage consider it inactive
 check_interval = 10 # check every 10 seconds
 
+
 client = docker.from_env()
+bind_dir = os.getenv("BIND_DIR")
+
 def get_executor(session_id):
     if session_id in container_registry:
         container_name = container_registry[session_id]
-        executor = CodeExecutor(container_name=container_name)
+        executor = CodeExecutor(
+            bind_dir= bind_dir,
+            container_name=container_name)
     else:
-        executor = CodeExecutor()
+        executor = CodeExecutor(bind_dir= bind_dir)
         container_registry[session_id] = executor._container_name
     return executor
 
