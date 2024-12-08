@@ -1,106 +1,97 @@
-import docker.errors
-from flask import Flask, request, jsonify,session
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from excutor.excutor import CodeExecutor
-from excutor.utils import CodeBlock
-import time,threading
-import docker
-import uuid
+from excutor.utils import CodeBlock, File
+from excutor.manager import ExecutorManage
 import os
-
 
 app = Flask(__name__)
 CORS(app)
-app.secret_key = 'cs-python-executor'
-container_registry = {}
+manager = ExecutorManage()
+# os.environ['BIND_DIR'] = os.path.abspath('./code')
 
-# if the container is inactive for 1 minutes, stop the container
-idle_time = 60  # 1 minutes timeout
-idle_threshold = 0.1 # if lower than 0.1% CPU usage consider it inactive
-check_interval = 10 # check every 10 seconds
-
-
-client = docker.from_env()
-bind_dir = os.getenv("BIND_DIR", os.path.abspath("./code"))
-
-def get_executor(session_id):
-    if session_id in container_registry:
-        container_name = container_registry[session_id]
-        executor = CodeExecutor(
-            bind_dir= bind_dir,
-            container_name=container_name)
-    else:
-        executor = CodeExecutor(bind_dir= bind_dir)
-        container_registry[session_id] = executor._container_name
-    return executor
-
-def calculate_cpu_percent(docker_stats):
-    cpu_delta = docker_stats["cpu_stats"]["cpu_usage"]["total_usage"] - docker_stats["precpu_stats"]["cpu_usage"]["total_usage"]
-    system_cpu_delta = docker_stats["cpu_stats"]["system_cpu_usage"] - docker_stats["precpu_stats"]["system_cpu_usage"]
-    number_cpus = docker_stats["cpu_stats"]["online_cpus"]
-    if system_cpu_delta > 0 and cpu_delta > 0:
-        cpu_percent = (cpu_delta / system_cpu_delta) * number_cpus * 100.0
-    else:
-        cpu_percent = 0.0
-    return cpu_percent
-
-def is_container_idle(container, idle_threshold=60):
-    # Get container stats
-    stats = container.stats(stream=False)
-    cpu_perc = calculate_cpu_percent(stats)
-    # If CPU usage is below a certain threshold, consider it idle
-    return cpu_perc <= idle_threshold
-
-def stop_if_idle(check_interval=10, idle_time=60):
-    idle_start = {}
-    while True:
-        for session_id in list(container_registry.keys()):
-            container_name = container_registry.get(session_id)
-            if container_name is None:
-                continue
-            try:
-                container = client.containers.get(container_name)
-                if is_container_idle(container, idle_threshold):
-                    if session_id not in idle_start:
-                        idle_start[session_id] = time.time()
-                    elif time.time() - idle_start[session_id] >= idle_time:
-                        container.stop()
-                        print(f"Container {container_name} stopped due to inactivity.")
-                        del container_registry[session_id]
-                        del idle_start[session_id]
-                else:
-                    if session_id in idle_start:
-                        del idle_start[session_id]
-            except docker.errors.NotFound:
-                if session_id in container_registry:
-                    del container_registry[session_id]
-        time.sleep(check_interval)
-
-@app.route('/api/execute', methods=['POST'])
-def execute_code_block():
+@app.route('/api/setup', methods=['POST'])
+def setup():
     session_id = request.json.get('session_id')
-    code_blocks = request.json.get('code_blocks')
-    if code_blocks is None:
-        return jsonify({'error': 'No code blocks provided.'}), 400
-    if session_id is None:
-        session_id = str(uuid.uuid4())
-    session['session_id'] = session_id
-    executor = get_executor(session_id)
-    code_blocks = [CodeBlock(code=code_block["code"],language=code_block["language"]) for code_block in code_blocks]
-    code_result= executor.execute_code_blocks(code_blocks)
+    packages = request.json.get('packages')
+    language = request.json.get('language')
+    container_name = f"csflow-{session_id}"
+    executor = manager.get_executor(container_name)
+    if executor is None:
+        executor = CodeExecutor(container_name=container_name)
+        manager.register_excutor(executor)
+        code_result = executor.setup(packages=packages, lang=language)
+    else:
+        code_result = executor.setup(packages=packages, lang=language)
     return jsonify({
+        'container_name': executor._container_name,
         'exit_code': code_result.exit_code, 
-        'output': code_result.output, 
-        'session_id': session['session_id'], 
-        'container_name': container_registry[session['session_id']]
+        'output': code_result.output,
     })
 
-if __name__ == '__main__':
-    # Start the inactivity monitor thread
-    inactivity_thread = threading.Thread(target=stop_if_idle, args=(check_interval, idle_time))
-    inactivity_thread.daemon = True
-    inactivity_thread.start()
+@app.route('/api/keep_alive', methods=['POST'])
+def keep_alive():
+    session_id = request.json.get('session_id')
+    container_name = f"csflow-{session_id}"
+    executor = manager.get_executor(container_name)
+    if executor is None:
+        executor = CodeExecutor(container_name=container_name)
+        manager.register_excutor(executor)
+        manager.keep_alive(executor._container_name)
+    else:
+        manager.keep_alive(executor._container_name)
+    return jsonify({
+        'container_name': executor._container_name,
+        'last_update': executor._last_update_time
+    })
+
+@app.route('/api/execute', methods=['POST'])
+def execute():
+    session_id = request.json.get('session_id')
+    code_blocks = request.json.get('code_blocks')
+    container_name = f"csflow-{session_id}"
+    if code_blocks is None:
+        return jsonify({'error': 'No code blocks provided.'}), 400
+    executor = manager.get_executor(container_name)
+    if executor is None:
+        executor = CodeExecutor(container_name=container_name)
+        manager.register_excutor(executor)
     
+    exeucte_blocks = []
+    for code_block in code_blocks:
+        code_block = CodeBlock(
+            code=code_block["code"],
+            language=code_block["language"],
+            files=[File(name=file["name"], content=file["content"]) for file in code_block["files"]] if "files" in code_block else None
+        )
+        exeucte_blocks.append(code_block)
+    code_result= executor.execute(exeucte_blocks)
+    return jsonify({
+        'container_name': executor._container_name,
+        'exit_code': code_result.exit_code, 
+        'output': code_result.output
+    })
+
+@app.route('/api/kill', methods=['POST'])
+def kill_executor():
+    session_id = request.json.get('session_id')
+    container_name = f"csflow-{session_id}"
+    executor = manager.get_executor(container_name)
+    if executor:
+        manager.unregister_excutor(container_name)
+        return jsonify({
+            'container_name': container_name,
+            'exit_code': 0,
+            'output': 'Container has been removed.'
+        })
+    else:
+        return jsonify({
+            'container_name': container_name,
+            'exit_code': 1,
+            'output': 'Container not found.'
+        })
+
+if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=8000)
 
 

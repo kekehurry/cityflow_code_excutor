@@ -2,17 +2,16 @@
 
 - build the docker image
 
-	`docker build -t cityflow-python-executor .`
+  `docker build -t kekehurry/cityflow_executor .`
 
 - create a docker container and run
 
-	` 
-    docker run --privileged \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -v your_path_to_code_dir:/workspace/code \
-    -e BIND_DIR="your_path_to_code_dir" \
-    -p 8000:8000 \
-    --name cityflow-python-executor \
-    --rm \
-    cityflow-python-executor
-    `
+```
+docker run --privileged  -itd --rm \
+-v /var/run/docker.sock:/var/run/docker.sock \
+-v $PWD/code:/workspace/code \
+-p 8000:8000 \
+--env-file .env \
+--name cityflow_executor \
+kekehurry/cityflow_executor
+```

@@ -1,16 +1,13 @@
-# modified code from https://github.com/microsoft/autogen/blob/main/autogen/coding/docker_commandline_code_executor.py
-
 import docker
 from docker.errors import ImageNotFound,NotFound
 import logging
 import uuid
 from hashlib import md5
 import time
-from typing import Any, ClassVar, Dict, List, Optional, Type, Union
-import re,os
-from .utils import CommandLineCodeResult 
-
-TIMEOUT_MSG = "Timeout"
+from typing import Any, ClassVar, Dict, List
+from .utils import CodeResult 
+import os
+import shutil
 
 def _wait_for_ready(container: Any, timeout: int = 60, stop_time: float = 0.1) -> None:
     elapsed_time = 0.0
@@ -21,72 +18,61 @@ def _wait_for_ready(container: Any, timeout: int = 60, stop_time: float = 0.1) -
         continue
     if container.status != "running":
         raise ValueError("Container failed to start")
-
-def _cmd(lang: str) -> str:
-    if lang in ["py","python"]:
-        return "python"
-    if lang.startswith("python") or lang in ["bash", "sh"]:
-        return lang
-    if lang in ["shell"]:
-        return "sh"
-    if lang == "javascript":
-        return "node"
-
-    raise NotImplementedError(f"{lang} not recognized in code execution")
     
-def silence_pip(code: str, lang: str) -> str:
-    """Apply -qqq flag to pip install commands."""
+def _cmd(lang: str) -> str:
     if lang == "python":
-        regex = r"^! ?pip install"
-    elif lang in ["bash", "shell", "sh", "pwsh", "powershell", "ps1"]:
-        regex = r"^pip install"
+        return "python"
+    elif lang == "javascript":
+        return "node"
     else:
-        return code
+        raise ValueError(f"Unsupported language {lang}")
+    
+def _pm(lang: str) -> str:
+    if lang == "python":
+        return "pip"
+    elif lang == "javascript":
+        return "npm"
+    else:
+        raise ValueError(f"Unsupported language {lang}")
 
-    # Find lines that start with pip install and make sure "-qqq" flag is added.
-    lines = code.split("\n")
-    for i, line in enumerate(lines):
-        # use regex to find lines that start with pip install.
-        match = re.search(regex, line)
-        if match is not None:
-            if "-qqq" not in line:
-                lines[i] = line.replace(match.group(0), match.group(0) + " -qqq")
-    return "\n".join(lines)
+def _ext(lang: str) -> str:
+    if lang == "python":
+        return "py"
+    elif lang == "javascript":
+        return "js"
+    else:
+        raise ValueError(f"Unsupported language {lang}")
     
 class CodeExecutor: 
     DEFAULT_EXECUTION_POLICY: ClassVar[Dict[str, bool]] = {
-        "bash": True,
-        "shell": True,
-        "sh": True,
-        "pwsh": False,
-        "powershell": False,
-        "ps1": False,
         "python": True,
         "javascript": False,
-        "html": False,
-        "css": False,
     }
-    LANGUAGE_ALIASES: ClassVar[Dict[str, str]] = {"py": "python", "js": "javascript"}
-
     def __init__(self, 
                 image: str = "python:3-slim", 
                 container_name = None,
                 timeout: int = 60,
                 auto_remove: bool = True,
+                bind_dir =None,
                 work_dir = "./code",
-                bind_dir = None,
                 stop_container: bool = True,
+                memory_limit: str = "512m"
+
                 ):
         self._client = docker.from_env()
         self._image = image
         if container_name is None:
-            container_name = f"code-exec-{uuid.uuid4()}"
+            container_name = f"csflow-{uuid.uuid4()}"
         self._container_name = container_name
         self._timeout = timeout
         self._auto_remove = auto_remove
-        self._bind_dir = bind_dir
-        self._work_dir = work_dir  
+        self._bind_dir = os.path.join(os.getenv("BIND_DIR", bind_dir),container_name)
+        self._work_dir = os.path.abspath(os.path.join(work_dir, container_name))
+        print(self._work_dir)
+        print(self._bind_dir)
         self._stop_container = stop_container  
+        self._mem_limit = memory_limit
+        self._last_update_time = time.time()
         
         # Check if the image exists
         try:
@@ -95,67 +81,109 @@ class CodeExecutor:
             logging.info(f"Pulling image {image}...")
             # Let the docker exception escape if this fails.
             self._client.images.pull(image)
+        self.start()
+
+    def start(self) -> None:
+        """(Experimental) Restart the code executor."""
         # Start a container from the image, read to exec commands later
         try:
-            self._container = self._client.containers.get(container_name)
+            self._container = self._client.containers.get(self._container_name)
         except NotFound:
             self._container = self._client.containers.create(
-                image,
-                name=container_name,
+                self._image,
+                name=self._container_name,
                 entrypoint="/bin/sh",
                 tty=True,
-                auto_remove=auto_remove,
-                volumes={bind_dir: {"bind": "/workspace", "mode": "rw"}},
-                working_dir="/workspace"
+                auto_remove=self._auto_remove,
+                volumes={self._bind_dir: {"bind": "/workspace", "mode": "rw"}},
+                working_dir="/workspace",
+                mem_limit=self._mem_limit,
+                network="cityflow"
             )
         # Start the container if it is not running
         if self._container.status != "running":
             self._container.start()
             _wait_for_ready(self._container)
-        
-    def execute_code_blocks(self, code_blocks: List[str]) -> List[str]:
-        outputs = []
-        files = []
-        last_exit_code = 0
-        for code_block in code_blocks:
-            lang = self.LANGUAGE_ALIASES.get(code_block.language.lower(), code_block.language.lower())
-            if lang not in self.DEFAULT_EXECUTION_POLICY:
-                outputs.append(f"Unsupported language {lang}\n")
-                last_exit_code = 1
-                break
-            code = silence_pip(code_block.code, lang)
-
-            filename = f"tmp_code_{md5(code.encode()).hexdigest()}.{lang}"
-
-            code_path = os.path.join(self._work_dir, filename)
-            with open(code_path, "w") as fout:
-                fout.write(code)
-            files.append(code_path)
-
-            command = ["timeout", str(self._timeout), _cmd(lang), filename]
-            result = self._container.exec_run(command)
-            exit_code = result.exit_code
-            output = result.output.decode("utf-8")
-            if exit_code == 124:
-                output += "\n" + TIMEOUT_MSG
-            outputs.append(output)
-
-            last_exit_code = exit_code
-            if exit_code != 0:
-                break
-
-        code_file = str(files[0]) if files else None
-        return CommandLineCodeResult(exit_code=last_exit_code, output="".join(outputs), code_file=code_file)
-    
-    def restart(self) -> None:
-        """(Experimental) Restart the code executor."""
-        self._container.restart()
-        if self._container.status != "running":
-            raise ValueError(f"Failed to restart container. Logs: {self._container.logs()}")
+        else:
+            self._container.restart()
+            _wait_for_ready(self._container)
 
     def stop(self) -> None:
         """(Experimental) Stop the code executor."""
         try:
             self._container.stop()
+            # remove the work dir
+            shutil.rmtree(self._work_dir)
         except docker.errors.NotFound:
             pass
+    
+    def check(self) -> bool:
+        """Check if the container is running."""
+        return self._container.status == "running"
+
+    def setup(self, packages: List[str], lang:str) -> None:
+        """Set up the code executor."""
+        outputs = []
+        last_exit_code = 0
+        for package in packages:
+            result = self._container.exec_run([_pm(lang), "install", package])
+            exit_code = result.exit_code
+            output = result.output.decode("utf-8")
+            outputs.append(output)
+            last_exit_code = exit_code
+            if exit_code != 0:
+                break
+        self._last_update_time = time.time()
+        return CodeResult(exit_code=last_exit_code, output="".join(outputs))
+
+    def execute(self, code_blocks: List[str]) -> List[str]:
+        outputs = []
+        last_exit_code = 0
+        for code_block in code_blocks:
+            lang = code_block.language.lower()
+            if lang not in self.DEFAULT_EXECUTION_POLICY:
+                outputs.append(f"Unsupported language {lang}\n")
+                last_exit_code = 1
+                break
+            code = code_block.code
+
+            foldername = f"codeblock_{md5(code.encode()).hexdigest()}"
+            if not os.path.exists(os.path.join(self._work_dir, foldername)):
+                os.makedirs(os.path.join(self._work_dir, foldername))
+
+            filename = f"entrypoint"
+            code_path = os.path.join(self._work_dir, foldername, filename)
+            with open(code_path, "w") as fcode:
+                fcode.write(code)
+
+            if code_block.files:
+                for file in code_block.files:
+                    file_path = os.path.join(self._work_dir, foldername, file.name)
+                    with open(file_path, "w") as f:
+                        f.write(file.content)
+        
+            command = ["sh", "-c", f"cd {foldername} && timeout {self._timeout} {_cmd(lang)} {filename}"]
+            result = self._container.exec_run(command)
+            exit_code = result.exit_code
+            output = result.output.decode("utf-8")
+            if exit_code == 124:
+                output += "\n" + "Timeout"
+            last_exit_code = exit_code
+            if exit_code != 0:
+                break
+            outputs.append(output)
+            
+        if os.path.exists(os.path.join(self._work_dir, foldername, "output")):
+            with open(os.path.join(self._work_dir, foldername, "output"), "r") as f:
+                output = f.read()
+        else:
+            output = "".join(outputs)
+
+        self._last_update_time = time.time()
+        return CodeResult(exit_code=last_exit_code, output=output)
+    
+    def read_file(self, filename: str) -> str:
+        """Read the content of a file."""
+        filepath = os.path.join(self._work_dir, filename)
+        with open(filepath, "r") as f:
+            return f.read()

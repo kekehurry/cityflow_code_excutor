@@ -17,7 +17,6 @@ RUN python3 -m venv venv && \
 
 # Expose the application port
 EXPOSE 8000
-ENV PORT 8000
 
 # Command to keep the container running
 CMD ["./venv/bin/python", "server.py"]
