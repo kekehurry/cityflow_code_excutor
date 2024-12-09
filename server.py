@@ -26,6 +26,7 @@ def setup():
     return jsonify({
         'container_name': executor._container_name,
         'exit_code': code_result.exit_code, 
+        'console': code_result.console,
         'output': code_result.output,
     })
 
@@ -69,6 +70,7 @@ def execute():
     return jsonify({
         'container_name': executor._container_name,
         'exit_code': code_result.exit_code, 
+        'console': code_result.console,
         'output': code_result.output
     })
 

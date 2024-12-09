@@ -34,14 +34,6 @@ def _pm(lang: str) -> str:
         return "npm"
     else:
         raise ValueError(f"Unsupported language {lang}")
-
-def _ext(lang: str) -> str:
-    if lang == "python":
-        return "py"
-    elif lang == "javascript":
-        return "js"
-    else:
-        raise ValueError(f"Unsupported language {lang}")
     
 class CodeExecutor: 
     DEFAULT_EXECUTION_POLICY: ClassVar[Dict[str, bool]] = {
@@ -68,8 +60,6 @@ class CodeExecutor:
         self._auto_remove = auto_remove
         self._bind_dir = os.path.join(os.getenv("BIND_DIR", bind_dir),container_name)
         self._work_dir = os.path.abspath(os.path.join(work_dir, container_name))
-        print(self._work_dir)
-        print(self._bind_dir)
         self._stop_container = stop_container  
         self._mem_limit = memory_limit
         self._last_update_time = time.time()
@@ -123,26 +113,27 @@ class CodeExecutor:
 
     def setup(self, packages: List[str], lang:str) -> None:
         """Set up the code executor."""
-        outputs = []
+        console_outputs = []
         last_exit_code = 0
         for package in packages:
             result = self._container.exec_run([_pm(lang), "install", package])
             exit_code = result.exit_code
             output = result.output.decode("utf-8")
-            outputs.append(output)
+            console_outputs.append(output)
             last_exit_code = exit_code
             if exit_code != 0:
                 break
         self._last_update_time = time.time()
-        return CodeResult(exit_code=last_exit_code, output="".join(outputs))
+        return CodeResult(exit_code=last_exit_code, console="".join(console_outputs), output="")
 
     def execute(self, code_blocks: List[str]) -> List[str]:
-        outputs = []
+        """Execute the code blocks."""
+        console_outputs = []
         last_exit_code = 0
         for code_block in code_blocks:
             lang = code_block.language.lower()
             if lang not in self.DEFAULT_EXECUTION_POLICY:
-                outputs.append(f"Unsupported language {lang}\n")
+                console_outputs.append(f"Unsupported language {lang}\n")
                 last_exit_code = 1
                 break
             code = code_block.code
@@ -171,16 +162,15 @@ class CodeExecutor:
             last_exit_code = exit_code
             if exit_code != 0:
                 break
-            outputs.append(output)
-            
+            console_outputs.append(output)
+        
+        final_output = ""
         if os.path.exists(os.path.join(self._work_dir, foldername, "output")):
             with open(os.path.join(self._work_dir, foldername, "output"), "r") as f:
-                output = f.read()
-        else:
-            output = "".join(outputs)
+                final_output = f.read()
 
         self._last_update_time = time.time()
-        return CodeResult(exit_code=last_exit_code, output=output)
+        return CodeResult(exit_code=last_exit_code, console="".join(console_outputs), output=final_output)
     
     def read_file(self, filename: str) -> str:
         """Read the content of a file."""

@@ -19,4 +19,5 @@ class CodeBlock(BaseModel):
 class CodeResult(BaseModel):
     """(Experimental) A class that represents the result of a code execution."""
     exit_code: int = Field(description="The exit code of the code execution.")
+    console: str = Field(description="The console output of the code execution.")
     output: str = Field(description="The output of the code execution.")
