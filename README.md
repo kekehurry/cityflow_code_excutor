@@ -2,7 +2,7 @@
 
 - build the docker image
 
-  `docker build -t kekehurry/cityflow_executor .`
+  `docker build --no-cache -t kekehurry/cityflow_executor .`
 
 - create a docker container and run
 

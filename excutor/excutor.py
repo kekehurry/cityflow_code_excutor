@@ -46,22 +46,21 @@ class CodeExecutor:
                 timeout: int = 60,
                 auto_remove: bool = True,
                 bind_dir =None,
-                work_dir = "./code",
+                work_dir = "code",
                 stop_container: bool = True,
-                memory_limit: str = "512m"
-
+                memory_limit = "512m"
                 ):
         self._client = docker.from_env()
         self._image = image
         if container_name is None:
             container_name = f"csflow-{uuid.uuid4()}"
         self._container_name = container_name
-        self._timeout = timeout
+        self._timeout =  int(os.getenv("TIMEOUT",timeout))
         self._auto_remove = auto_remove
         self._bind_dir = os.path.join(os.getenv("BIND_DIR", bind_dir),container_name)
-        self._work_dir = os.path.abspath(os.path.join(work_dir, container_name))
+        self._work_dir = os.path.join(os.getenv("WORK_DIR", work_dir), container_name)
         self._stop_container = stop_container  
-        self._mem_limit = memory_limit
+        self._mem_limit = os.getenv("MEMORY_LIMIT",memory_limit)
         self._last_update_time = time.time()
         
         # Check if the image exists

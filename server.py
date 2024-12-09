@@ -8,9 +8,8 @@ import os
 app = Flask(__name__)
 CORS(app)
 manager = ExecutorManage()
-# os.environ['BIND_DIR'] = os.path.abspath('./code')
 
-@app.route('/api/setup', methods=['POST'])
+@app.route('/setup', methods=['POST'])
 def setup():
     session_id = request.json.get('session_id')
     packages = request.json.get('packages')
@@ -30,7 +29,7 @@ def setup():
         'output': code_result.output,
     })
 
-@app.route('/api/keep_alive', methods=['POST'])
+@app.route('/keep_alive', methods=['POST'])
 def keep_alive():
     session_id = request.json.get('session_id')
     container_name = f"csflow-{session_id}"
@@ -46,7 +45,7 @@ def keep_alive():
         'last_update': executor._last_update_time
     })
 
-@app.route('/api/execute', methods=['POST'])
+@app.route('/execute', methods=['POST'])
 def execute():
     session_id = request.json.get('session_id')
     code_blocks = request.json.get('code_blocks')
@@ -74,7 +73,7 @@ def execute():
         'output': code_result.output
     })
 
-@app.route('/api/kill', methods=['POST'])
+@app.route('/kill', methods=['POST'])
 def kill_executor():
     session_id = request.json.get('session_id')
     container_name = f"csflow-{session_id}"
