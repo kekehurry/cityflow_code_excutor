@@ -115,12 +115,14 @@ class CodeExecutor:
         console_outputs = []
         last_exit_code = 0
         for package in packages:
-            result = self._container.exec_run([_pm(lang), "install", package])
-            exit_code = result.exit_code
-            output = result.output.decode("utf-8")
-            console_outputs.append(output)
-            last_exit_code = exit_code
-            if exit_code != 0:
+            if package:
+                pm = _pm(lang)
+                result = self._container.exec_run([_pm(lang), "install", package, "--root-user-action=ignore"])
+                exit_code = result.exit_code
+                output = result.output.decode("utf-8")
+                console_outputs.append(output)
+                last_exit_code = exit_code
+            if last_exit_code != 0:
                 break
         self._last_update_time = time.time()
         return CodeResult(exit_code=last_exit_code, console="".join(console_outputs), output="")
@@ -136,8 +138,9 @@ class CodeExecutor:
                 last_exit_code = 1
                 break
             code = code_block.code
-
-            foldername = f"codeblock_{md5(code.encode()).hexdigest()}"
+            session_id = code_block.session_id
+            # foldername = f"codeblock_{md5(code.encode()).hexdigest()}"
+            foldername = f"codeblock_{session_id}"
             if not os.path.exists(os.path.join(self._work_dir, foldername)):
                 os.makedirs(os.path.join(self._work_dir, foldername))
 
@@ -148,9 +151,9 @@ class CodeExecutor:
 
             if code_block.files:
                 for file in code_block.files:
-                    file_path = os.path.join(self._work_dir, foldername, file.name)
+                    file_path = os.path.join(self._work_dir, foldername, file.path)
                     with open(file_path, "w") as f:
-                        f.write(file.content)
+                        f.write(file.data)
         
             command = ["sh", "-c", f"cd {foldername} && timeout {self._timeout} {_cmd(lang)} {filename}"]
             result = self._container.exec_run(command)
@@ -170,9 +173,10 @@ class CodeExecutor:
 
         self._last_update_time = time.time()
         return CodeResult(exit_code=last_exit_code, console="".join(console_outputs), output=final_output)
-    
-    def read_file(self, filename: str) -> str:
-        """Read the content of a file."""
-        filepath = os.path.join(self._work_dir, filename)
-        with open(filepath, "r") as f:
-            return f.read()
+
+    def remove_session(self, session_id: str) -> None:
+        """Remove the session."""
+        foldername = f"codeblock_{session_id}"
+        if os.path.exists(os.path.join(self._work_dir, foldername)):
+            print(f"Removing {os.path.join(self._work_dir, foldername)}")
+            shutil.rmtree(os.path.join(self._work_dir, foldername))

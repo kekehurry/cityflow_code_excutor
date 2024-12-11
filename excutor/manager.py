@@ -1,12 +1,13 @@
 from .excutor import CodeExecutor
 import threading
 import time
+import os
 
 class ExecutorManage:
-    def __init__(self, check_interval=30, idle_time=120):
+    def __init__(self, check_interval=60, idle_time=120):
         self._container_registry = {}
-        self._check_interval = check_interval
-        self._idle_time = idle_time
+        self._check_interval = int(os.getenv("CHECK_INTERVAL", check_interval))
+        self._idle_time = int(os.getenv("IDLE_TIME", idle_time))
         self._auto_remove_thread = threading.Thread(target=self._auto_remove)
         self._auto_remove_thread.daemon = True
         self._auto_remove_thread.start()

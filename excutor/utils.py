@@ -4,11 +4,12 @@ from typing import Any, ClassVar, Dict, List, Optional, Type, Union
 
 class File(BaseModel):
     """(Experimental) A class that represents a file."""
-    name: str = Field(description="The name of the file.")
-    content: str = Field(description="The content of the file.")
+    path: str = Field(description="The path of the file.")
+    data: str = Field(description="The content of the file.")
 
 class CodeBlock(BaseModel):
     """(Experimental) A class that represents a code block."""
+    session_id: str = Field(description="The id of the code block.")
     code: str = Field(description="The code to execute.")
     language: str = Field(description="The language of the code.")
     files: Optional[List[File]] = Field(
