@@ -52,6 +52,7 @@ class CodeExecutor:
                 ):
         self._client = docker.from_env()
         self._image = image
+        print(f"Using image {self._image}")
         if container_name is None:
             container_name = f"csflow-{uuid.uuid4()}"
         self._container_name = container_name

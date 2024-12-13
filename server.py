@@ -11,18 +11,23 @@ manager = ExecutorManage()
 
 @app.route('/setup', methods=['POST'])
 def setup():
-    flow_id = request.json.get('flowId')
+    id = request.json.get('flowId')
     packages = request.json.get('packages')
     language = request.json.get('language')
-    container_name = f"csflow-{flow_id}"
+    image = request.json.get('image')
+    container_name = f"csflow-{id}"
+    print(f"Setup Flow ID: {id} Image: {image}, Language: {language}, Packages: {packages}")
     executor = manager.get_executor(container_name)
     if executor is None:
-        executor = CodeExecutor(container_name=container_name)
+        executor = CodeExecutor(image=image,container_name=container_name)
         manager.register_excutor(executor)
-        code_result = executor.setup(packages=packages, lang=language)
-    else:
-        code_result = executor.setup(packages=packages, lang=language)
-    print(f"Setup Flow ID: {flow_id}, Console: {code_result.console}")
+    elif image != executor._container.image.tags[0]:
+        print(f"Restarting container {container_name} with new image {image}")
+        manager.unregister_excutor(container_name)
+        executor = CodeExecutor(image=image,container_name=container_name)
+        manager.register_excutor(executor)
+    code_result = executor.setup(packages=packages, lang=language)
+    print(f"Finished Setup Flow ID: {id}, Console: {code_result.console}")
     return jsonify({
         'container_name': executor._container_name,
         'exit_code': code_result.exit_code, 
@@ -30,11 +35,22 @@ def setup():
         'output': code_result.output,
     })
 
+@app.route('/is_alive', methods=['POST'])
+def is_alive():
+    id = request.json.get('flowId')
+    container_name = f"csflow-{id}"
+    print(f"Update Flow ID: {id}")
+    executor = manager.get_executor(container_name)
+    if executor:
+        return jsonify({"alive":executor.check()})
+    else:
+        return jsonify({"alive":False})
+
 @app.route('/keep_alive', methods=['POST'])
 def keep_alive():
-    flowId = request.json.get('flowId')
-    container_name = f"csflow-{flowId}"
-    print(f"Update Flow ID: {flowId}")
+    id = request.json.get('flowId')
+    container_name = f"csflow-{id}"
+    print(f"Update Flow ID: {id}")
     executor = manager.get_executor(container_name)
     if executor is None:
         executor = CodeExecutor(container_name=container_name)
@@ -49,11 +65,11 @@ def keep_alive():
 
 @app.route('/execute', methods=['POST'])
 def execute():
-    flow_id = request.json.get('flowId')
+    id = request.json.get('flowId')
     session_id = request.json.get('sessionId')
-    print(f"Execute Flow ID: {flow_id}, Session ID: {session_id}")
+    print(f"Execute Flow ID: {id}, Session ID: {session_id}")
     code_blocks = request.json.get('codeBlocks')
-    container_name = f"csflow-{flow_id}"
+    container_name = f"csflow-{id}"
     if code_blocks is None:
         return jsonify({'error': 'No code blocks provided.'}), 400
     executor = manager.get_executor(container_name)
@@ -80,14 +96,12 @@ def execute():
 
 @app.route('/remove_session', methods=['POST'])
 def remove_ssesion():
-    flow_id = request.json.get('flowId')
+    id = request.json.get('flowId')
     session_id = request.json.get('sessionId')
-    print(f"Remove Flow ID: {flow_id}, Session ID: {session_id}")
-    container_name = f"csflow-{flow_id}"
+    print(f"Remove Flow ID: {id}, Session ID: {session_id}")
+    container_name = f"csflow-{id}"
     executor = manager.get_executor(container_name)
     if executor:
-        executor = CodeExecutor(container_name=container_name)
-        manager.register_excutor(executor)
         executor.remove_session(session_id)
         return jsonify({
             'container_name': executor._container_name,
@@ -102,9 +116,9 @@ def remove_ssesion():
 
 @app.route('/kill', methods=['POST'])
 def kill_executor():
-    flow_id = request.json.get('flowId')
-    container_name = f"csflow-{flow_id}"
-    print(f"Kill Flow ID: {flow_id}")
+    id = request.json.get('flowId')
+    container_name = f"csflow-{id}"
+    print(f"Kill Flow ID: {id}")
     executor = manager.get_executor(container_name)
     if executor:
         manager.unregister_excutor(container_name)
