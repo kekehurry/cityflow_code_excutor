@@ -1,9 +1,8 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from excutor.excutor import CodeExecutor
-from excutor.utils import CodeBlock, File
-from excutor.manager import ExecutorManage
-import os
+from executor.executor import CodeExecutor
+from executor.utils import CodeBlock, File
+from executor.manager import ExecutorManage
 
 app = Flask(__name__)
 CORS(app)

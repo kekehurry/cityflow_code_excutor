@@ -103,7 +103,8 @@ class CodeExecutor:
         try:
             self._container.stop()
             # remove the work dir
-            shutil.rmtree(self._work_dir)
+            if os.path.exists(self._work_dir):
+                shutil.rmtree(self._work_dir)
         except docker.errors.NotFound:
             pass
     
@@ -178,6 +179,9 @@ class CodeExecutor:
     def remove_session(self, session_id: str) -> None:
         """Remove the session."""
         foldername = f"codeblock_{session_id}"
-        if os.path.exists(os.path.join(self._work_dir, foldername)):
-            print(f"Removing {os.path.join(self._work_dir, foldername)}")
-            shutil.rmtree(os.path.join(self._work_dir, foldername))
+        try:
+            if os.path.exists(os.path.join(self._work_dir, foldername)):
+                print(f"Removing {os.path.join(self._work_dir, foldername)}")
+                shutil.rmtree(os.path.join(self._work_dir, foldername))
+        except FileNotFoundError:
+            pass
