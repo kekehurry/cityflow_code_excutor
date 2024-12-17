@@ -161,12 +161,13 @@ class CodeExecutor:
             result = self._container.exec_run(command)
             exit_code = result.exit_code
             output = result.output.decode("utf-8")
+            console_outputs.append(output)
             if exit_code == 124:
                 output += "\n" + "Timeout"
             last_exit_code = exit_code
             if exit_code != 0:
                 break
-            console_outputs.append(output)
+            
         
         final_output = ""
         if os.path.exists(os.path.join(self._work_dir, foldername, "output")):

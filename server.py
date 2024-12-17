@@ -3,6 +3,7 @@ from flask_cors import CORS
 from executor.executor import CodeExecutor
 from executor.utils import CodeBlock, File
 from executor.manager import ExecutorManage
+from hashlib import md5
 
 app = Flask(__name__)
 CORS(app)
@@ -11,11 +12,12 @@ manager = ExecutorManage()
 @app.route('/setup', methods=['POST'])
 def setup():
     id = request.json.get('flowId')
+    user_id = request.json.get('userId')
     packages = request.json.get('packages')
     language = request.json.get('language')
     image = request.json.get('image')
-    container_name = f"csflow-{id}"
-    print(f"Setup Flow ID: {id} Image: {image}, Language: {language}, Packages: {packages}")
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Setup Container: {container_name} Image: {image}, Language: {language}, Packages: {packages}")
     executor = manager.get_executor(container_name)
     if executor is None:
         executor = CodeExecutor(image=image,container_name=container_name)
@@ -26,7 +28,7 @@ def setup():
         executor = CodeExecutor(image=image,container_name=container_name)
         manager.register_excutor(executor)
     code_result = executor.setup(packages=packages, lang=language)
-    print(f"Finished Setup Flow ID: {id}, Console: {code_result.console}")
+    print(f"Finished Setup Container: {container_name}, Console: {code_result.console}")
     return jsonify({
         'container_name': executor._container_name,
         'exit_code': code_result.exit_code, 
@@ -37,8 +39,9 @@ def setup():
 @app.route('/is_alive', methods=['POST'])
 def is_alive():
     id = request.json.get('flowId')
-    container_name = f"csflow-{id}"
-    print(f"Update Flow ID: {id}")
+    user_id = request.json.get('userId')
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Update Container: {container_name}")
     executor = manager.get_executor(container_name)
     if executor:
         return jsonify({"alive":executor.check()})
@@ -48,8 +51,9 @@ def is_alive():
 @app.route('/keep_alive', methods=['POST'])
 def keep_alive():
     id = request.json.get('flowId')
-    container_name = f"csflow-{id}"
-    print(f"Update Flow ID: {id}")
+    user_id = request.json.get('userId')
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Update Container: {container_name}")
     executor = manager.get_executor(container_name)
     if executor is None:
         executor = CodeExecutor(container_name=container_name)
@@ -65,10 +69,11 @@ def keep_alive():
 @app.route('/execute', methods=['POST'])
 def execute():
     id = request.json.get('flowId')
+    user_id = request.json.get('userId')
     session_id = request.json.get('sessionId')
-    print(f"Execute Flow ID: {id}, Session ID: {session_id}")
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Execute Container: {container_name}, Session ID: {session_id}")
     code_blocks = request.json.get('codeBlocks')
-    container_name = f"csflow-{id}"
     if code_blocks is None:
         return jsonify({'error': 'No code blocks provided.'}), 400
     executor = manager.get_executor(container_name)
@@ -96,9 +101,10 @@ def execute():
 @app.route('/remove_session', methods=['POST'])
 def remove_ssesion():
     id = request.json.get('flowId')
+    user_id = request.json.get('userId')
     session_id = request.json.get('sessionId')
-    print(f"Remove Flow ID: {id}, Session ID: {session_id}")
-    container_name = f"csflow-{id}"
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Remove Container: {container_name}, Session ID: {session_id}")
     executor = manager.get_executor(container_name)
     if executor:
         executor.remove_session(session_id)
@@ -116,8 +122,9 @@ def remove_ssesion():
 @app.route('/kill', methods=['POST'])
 def kill_executor():
     id = request.json.get('flowId')
-    container_name = f"csflow-{id}"
-    print(f"Kill Flow ID: {id}")
+    user_id = request.json.get('userId')
+    container_name = f"csflow-{user_id}-{id}"
+    print(f"Kill Container: {container_name}")
     executor = manager.get_executor(container_name)
     if executor:
         manager.unregister_excutor(container_name)
