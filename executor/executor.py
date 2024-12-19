@@ -10,6 +10,7 @@ import os
 import shutil
 import base64
 
+
 def _wait_for_ready(container: Any, timeout: int = 60, stop_time: float = 0.1) -> None:
     elapsed_time = 0.0
     while container.status != "running" and elapsed_time < timeout:
@@ -57,12 +58,12 @@ class CodeExecutor:
         if container_name is None:
             container_name = f"csflow-{uuid.uuid4()}"
         self._container_name = container_name
-        self._timeout =  int(os.getenv("TIMEOUT",timeout))
+        self._timeout =  int(os.getenv("EXECUTOR_TIMEOUT",timeout))
         self._auto_remove = auto_remove
-        self._bind_dir = os.path.join(os.getenv("BIND_DIR", bind_dir),container_name)
-        self._work_dir = os.path.join(os.getenv("WORK_DIR", work_dir), container_name)
+        self._bind_dir = os.path.join(os.getenv("EXECUTOR_BIND_DIR", bind_dir),container_name)
+        self._work_dir = os.path.join(os.getenv("EXECUTOR_WORK_DIR", work_dir), container_name)
         self._stop_container = stop_container  
-        self._mem_limit = os.getenv("MEMORY_LIMIT",memory_limit)
+        self._mem_limit = os.getenv("EXECUTOR_MEMORY_LIMIT",memory_limit)
         self._last_update_time = time.time()
         
         # Check if the image exists
