@@ -8,6 +8,7 @@ from typing import Any, ClassVar, Dict, List
 from .utils import CodeResult 
 import os
 import shutil
+import base64
 
 def _wait_for_ready(container: Any, timeout: int = 60, stop_time: float = 0.1) -> None:
     elapsed_time = 0.0
@@ -154,9 +155,16 @@ class CodeExecutor:
             if code_block.files:
                 for file in code_block.files:
                     file_path = os.path.join(self._work_dir, foldername, file.path)
-                    with open(file_path, "w") as f:
-                        f.write(file.data)
-        
+                    raw_data = file.data
+                    if raw_data.startswith("data:"):
+                        with open(file_path, "wb") as f:
+                            base64_data = raw_data.split(",")[1]
+                            binary_data = base64.b64decode(base64_data)
+                            f.write(binary_data)
+                    else:
+                        with open(file_path, "w") as f:
+                            f.write(raw_data)
+
             command = ["sh", "-c", f"cd {foldername} && timeout {self._timeout} {_cmd(lang)} {filename}"]
             result = self._container.exec_run(command)
             exit_code = result.exit_code
